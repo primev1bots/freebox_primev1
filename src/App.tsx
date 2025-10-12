@@ -2073,7 +2073,6 @@ const MainApp: React.FC = () => {
                   className="w-full h-full"
                 />
               </div>
-
             </div>
 
             <div className="rounded-3xl p-5 border border-red-500/40 bg-gradient-to-br from-[#1c0f1c] to-[#2b0a1a] shadow-md hover:shadow-xl transition flex items-center justify-between gap-4">
@@ -2096,8 +2095,22 @@ const MainApp: React.FC = () => {
                 Telegram
               </a>
             </div>
+
+            {/* Developed By Line */}
+            <p className="text-center text-xs text-gray-400 mt-4">
+              <a
+                href="https://t.me/altaslab" // Replace with your Telegram channel
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1 hover:text-blue-400 transition-colors"
+              >
+                <FaTelegramPlane className="w-4 h-4" />
+                Developed By Atlas Lab BD
+              </a>
+            </p>
           </div>
         );
+
 
       default:
         return <div className="px-4 mt-6">Page not found</div>;
