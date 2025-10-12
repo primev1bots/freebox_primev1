@@ -49,7 +49,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({
           transition={{ delay: 0.3 }}
           className="text-3xl font-bold mb-4 bg-gradient-to-r from-blue-400 via-indigo-300 to-cyan-400 bg-clip-text text-transparent"
         >
-          Account Limit Reached
+          Important Notice
         </motion.h1>
 
         {/* Main Account Info */}
