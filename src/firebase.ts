@@ -10,13 +10,14 @@ import { getStorage } from "firebase/storage";
 
 // Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDuaWMh0eIJ2tdtLxYj43ij9MGSh_Yo22M",
-  authDomain: "test-6977e.firebaseapp.com",
-  databaseURL: "https://test-6977e-default-rtdb.firebaseio.com/",
-  projectId: "test-6977e",
-  storageBucket: "test-6977e.firebasestorage.app",
-  messagingSenderId: "544329273038",
-  appId: "1:544329273038:web:c7a31e12bec7c80741ca9f",
+  apiKey: "AIzaSyCH4vpSVmGkjcgC4KiS_7JkD-uuFQFOqyw",
+  authDomain: "freebox-primev1.firebaseapp.com",
+  databaseURL: "https://freebox-primev1-default-rtdb.firebaseio.com",
+  projectId: "freebox-primev1",
+  storageBucket: "freebox-primev1.firebasestorage.app",
+  messagingSenderId: "227315554911",
+  appId: "1:227315554911:web:bae79fadb6100170ae19ea",
+  measurementId: "G-3JZGRY5KGH"
 };
 
 // Initialize Firebase (ensure it's only initialized once)
