@@ -1093,26 +1093,20 @@ const MainApp: React.FC = () => {
 
   // Check device compatibility first
   useEffect(() => {
-    const checkDevice = () => {
-      const tg = (window as any).Telegram?.WebApp;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const checkDevice = () => {
+    // ✅ সব প্ল্যাটফর্মে অ্যাপ চালানোর অনুমতি
+    setIsMobileAllowed(true);
+    setSplashScreenData({
+      show: false,
+      message: ""
+    });
+    setShowSplashScreen(false);
+    setIsInitializing(false);
+  };
 
-      if (tg && (tg.platform === "android" || tg.platform === "ios") && isMobile) {
-        setIsMobileAllowed(true);
-      } else {
-        setIsMobileAllowed(false);
-        setSplashScreenData({
-          show: true,
-          message: "This app is only available on mobile devices through Telegram."
-        });
-        setShowSplashScreen(true);
-        setIsInitializing(false);
-      }
-    };
-
-    setTimeout(checkDevice, 100);
-  }, []);
-
+  // অল্প delay দিলে initialization smooth হয়
+  setTimeout(checkDevice, 100);
+}, []);
   // Setup realtime listeners for all data including device restrictions
   const setupRealtimeListeners = (telegramId: number) => {
     cleanupListeners();
