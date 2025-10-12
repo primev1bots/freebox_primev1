@@ -150,7 +150,7 @@ const ReferPage: React.FC<ReferPageProps> = ({ userId }) => {
     return total + (referral.commissionEarned || referral.total_balance * (commissionRate / 100));
   }, 0);
 
-  const botUsername = "bnvktfffbot";
+  const botUsername = "freebox2_bot";
   const referralLink = `https://t.me/${botUsername}?start=${userId}`;
   const shareText = encodeURIComponent(`🚀 Join me and earn crypto rewards! Use my referral link: ${referralLink}`);
 
