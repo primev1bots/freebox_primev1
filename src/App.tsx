@@ -147,6 +147,18 @@ interface DeviceRestrictions {
   updatedBy: string;
 }
 
+interface AdConfig {
+  id: string;
+  appId: string;
+  cooldown: number;
+  dailyLimit: number;
+  enabled: boolean;
+  hourlyLimit: number;
+  reward: number;
+  waitTime: number;
+  provider: string;
+}
+
 // Device ID generation utility
 const generateDeviceId = (): string => {
   const components = [
@@ -766,6 +778,91 @@ const firebaseRequest = {
         maintenanceMessage: 'Wallet is under maintenance. Please try again later.'
       };
     }
+  },
+
+  // NEW: Ad Configuration Functions
+  getAdConfig: async (adId: string): Promise<AdConfig | null> => {
+    try {
+      const adRef = ref(database, `adexora/${adId}`);
+      const snapshot = await get(adRef);
+      return snapshot.exists() ? { id: adId, ...snapshot.val() } : null;
+    } catch (error) {
+      console.error('Error getting ad config:', error);
+      return null;
+    }
+  },
+
+  getAllAdConfigs: async (): Promise<AdConfig[]> => {
+    try {
+      const adRef = ref(database, 'adexora');
+      const snapshot = await get(adRef);
+      
+      if (!snapshot.exists()) return [];
+      
+      const adConfigs: AdConfig[] = [];
+      snapshot.forEach((childSnapshot) => {
+        adConfigs.push({
+          id: childSnapshot.key!,
+          ...childSnapshot.val()
+        });
+      });
+      
+      return adConfigs;
+    } catch (error) {
+      console.error('Error getting all ad configs:', error);
+      return [];
+    }
+  },
+
+  updateAdWatchStats: async (telegramId: number, adId: string): Promise<boolean> => {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      
+      const statsRef = ref(database, `adStats/${telegramId}/${today}/${adId}`);
+      const snapshot = await get(statsRef);
+      
+      let currentCount = 0;
+      if (snapshot.exists()) {
+        currentCount = snapshot.val().count || 0;
+      }
+      
+      await set(statsRef, {
+        count: currentCount + 1,
+        lastWatched: now.toISOString()
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Error updating ad watch stats:', error);
+      return false;
+    }
+  },
+
+  getTodayAdWatches: async (telegramId: number, adId: string): Promise<number> => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const statsRef = ref(database, `adStats/${telegramId}/${today}/${adId}`);
+      const snapshot = await get(statsRef);
+      
+      return snapshot.exists() ? (snapshot.val().count || 0) : 0;
+    } catch (error) {
+      console.error('Error getting today ad watches:', error);
+      return 0;
+    }
+  },
+
+  getLastAdWatchTime: async (telegramId: number, adId: string): Promise<string | null> => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const statsRef = ref(database, `adStats/${telegramId}/${today}/${adId}`);
+      const snapshot = await get(statsRef);
+      
+      return snapshot.exists() ? (snapshot.val().lastWatched || null) : null;
+    } catch (error) {
+      console.error('Error getting last ad watch time:', error);
+      return null;
+    }
   }
 };
 
@@ -977,7 +1074,6 @@ const EnhancedSourceProtection: React.FC = () => {
   return null;
 };
 
-
 // Main App Component
 const App: React.FC = () => {
   return (
@@ -1077,6 +1173,7 @@ const MainApp: React.FC = () => {
   });
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
   const [maxAccountsPerDevice, setMaxAccountsPerDevice] = useState<number>(2); // Fixed to 2 accounts per device
+  const [adConfigs, setAdConfigs] = useState<AdConfig[]>([]);
 
   const location = useLocation();
   const slideInterval = useRef<NodeJS.Timeout | null>(null);
@@ -1090,29 +1187,29 @@ const MainApp: React.FC = () => {
   const paymentMethodsListenerRef = useRef<any>(null);
   const walletConfigListenerRef = useRef<any>(null);
   const deviceRestrictionsListenerRef = useRef<any>(null);
+  const adConfigsListenerRef = useRef<any>(null);
 
   // Check device compatibility first
-useEffect(() => {
-const checkDevice = () => {
-const tg = (window as any).Telegram?.WebApp;
-const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  useEffect(() => {
+    const checkDevice = () => {
+      const tg = (window as any).Telegram?.WebApp;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-if (tg && (tg.platform === "android" || tg.platform === "ios") && isMobile) {  
-    setIsMobileAllowed(true);  
-  } else {  
-    setIsMobileAllowed(false);  
-    setSplashScreenData({  
-      show: true,  
-      message: "This app is only available on mobile devices through Telegram."  
-    });  
-    setShowSplashScreen(true);  
-    setIsInitializing(false);  
-  }  
-};  
+      if (tg && (tg.platform === "android" || tg.platform === "ios") && isMobile) {  
+        setIsMobileAllowed(true);  
+      } else {  
+        setIsMobileAllowed(false);  
+        setSplashScreenData({  
+          show: true,  
+          message: "This app is only available on mobile devices through Telegram."  
+        });  
+        setShowSplashScreen(true);  
+        setIsInitializing(false);  
+      }  
+    };  
 
-setTimeout(checkDevice, 100);
-
-}, []);
+    setTimeout(checkDevice, 100);
+  }, []);
 
   // Setup realtime listeners for all data including device restrictions
   const setupRealtimeListeners = (telegramId: number) => {
@@ -1124,6 +1221,24 @@ setTimeout(checkDevice, 100);
       if (snapshot.exists()) {
         setMaxAccountsPerDevice(2); // Always set to 2 regardless of database value
         console.log('Device restrictions loaded, max accounts fixed to 2');
+      }
+    });
+
+    // Ad configurations listener
+    const adConfigsRef = ref(database, 'adexora');
+    adConfigsListenerRef.current = onValue(adConfigsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const adConfigsData: AdConfig[] = [];
+        snapshot.forEach((childSnapshot) => {
+          adConfigsData.push({
+            id: childSnapshot.key!,
+            ...childSnapshot.val()
+          });
+        });
+        setAdConfigs(adConfigsData);
+        console.log('Ad configs loaded:', adConfigsData.length);
+      } else {
+        setAdConfigs([]);
       }
     });
 
@@ -1308,6 +1423,10 @@ setTimeout(checkDevice, 100);
     if (deviceRestrictionsListenerRef.current) {
       off(deviceRestrictionsListenerRef.current);
       deviceRestrictionsListenerRef.current = null;
+    }
+    if (adConfigsListenerRef.current) {
+      off(adConfigsListenerRef.current);
+      adConfigsListenerRef.current = null;
     }
   };
 
@@ -1525,6 +1644,88 @@ setTimeout(checkDevice, 100);
     }
   };
 
+  // UPDATED: recordAdWatch function that reads from Firebase
+  const recordAdWatch = async (adId: string) => {
+    if (!userData) {
+      alert('User data not loaded. Please try again.');
+      return 0;
+    }
+
+    try {
+      // Get ad configuration from Firebase
+      const adConfig = await firebaseRequest.getAdConfig(adId);
+      
+      if (!adConfig) {
+        alert('Ad configuration not found. Please try again later.');
+        return 0;
+      }
+
+      if (!adConfig.enabled) {
+        alert('This ad provider is temporarily unavailable.');
+        return 0;
+      }
+
+      // Check daily limit
+      const todayWatches = await firebaseRequest.getTodayAdWatches(userData.telegramId, adId);
+      if (todayWatches >= adConfig.dailyLimit) {
+        alert(`Daily limit reached for this ad. You can watch ${adConfig.dailyLimit} ads per day.`);
+        return 0;
+      }
+
+      // Check cooldown
+      const lastWatchTime = await firebaseRequest.getLastAdWatchTime(userData.telegramId, adId);
+      if (lastWatchTime) {
+        const timeSinceLast = (Date.now() - new Date(lastWatchTime).getTime()) / 1000;
+        if (timeSinceLast < adConfig.cooldown) {
+          const waitLeft = Math.ceil(adConfig.cooldown - timeSinceLast);
+          alert(`Please wait ${waitLeft} seconds before watching another ad.`);
+          return 0;
+        }
+      }
+
+      const reward = adConfig.reward;
+      const newBalance = userData.balance + reward;
+      const newTotalEarned = userData.totalEarned + reward;
+      const newAdsCount = userData.adsWatchedToday + 1;
+
+      // Update user balance and stats
+      await firebaseRequest.updateUser(userData.telegramId, {
+        balance: newBalance,
+        totalEarned: newTotalEarned,
+        adsWatchedToday: newAdsCount,
+        lastAdWatch: new Date().toISOString()
+      });
+
+      // Update ad watch stats
+      await firebaseRequest.updateAdWatchStats(userData.telegramId, adId);
+
+      // Add transaction record
+      await firebaseRequest.addTransaction({
+        userId: userData.telegramId.toString(),
+        type: 'earn',
+        amount: reward,
+        description: `Watched advertisement from ${adConfig.provider || 'adexora'}`,
+        status: 'completed',
+        createdAt: new Date().toISOString()
+      });
+
+      // Process referral commission if applicable
+      if (userData.referredBy) {
+        const commissionSuccess = await firebaseRequest.addReferralCommission(userData.telegramId, reward);
+        if (commissionSuccess) {
+          console.log('Referral commission added for ad watch');
+        }
+      }
+
+      console.log(`Ad watch recorded successfully. Reward: ${reward}`);
+      return reward;
+    } catch (error) {
+      console.error('Error recording ad watch:', error);
+      alert('Error recording ad watch. Please try again.');
+      return 0;
+    }
+  };
+
   const completeTask = async (taskId: string) => {
     if (!userData) {
       alert('User data not loaded. Please try again.');
@@ -1584,58 +1785,6 @@ setTimeout(checkDevice, 100);
       console.error('Error completing task:', error);
       alert('Error completing task. Please try again.');
       return false;
-    }
-  };
-
-  const recordAdWatch = async (_adId: number) => {
-    if (!userData) {
-      alert('User data not loaded. Please try again.');
-      return 0;
-    }
-
-    try {
-      const now = new Date();
-      const lastWatch = userData.lastAdWatch ? new Date(userData.lastAdWatch) : null;
-
-      let newAdsWatchedToday = userData.adsWatchedToday || 0;
-
-      if (lastWatch && lastWatch.toDateString() !== now.toDateString()) {
-        newAdsWatchedToday = 0;
-      }
-
-      const reward = 0.5;
-      const newBalance = userData.balance + reward;
-      const newTotalEarned = userData.totalEarned + reward;
-      const newAdsCount = newAdsWatchedToday + 1;
-
-      await firebaseRequest.updateUser(userData.telegramId, {
-        balance: newBalance,
-        totalEarned: newTotalEarned,
-        adsWatchedToday: newAdsCount,
-        lastAdWatch: now.toISOString()
-      });
-
-      await firebaseRequest.addTransaction({
-        userId: userData.telegramId.toString(),
-        type: 'earn',
-        amount: reward,
-        description: 'Watched advertisement',
-        status: 'completed',
-        createdAt: now.toISOString()
-      });
-
-      if (userData.referredBy) {
-        const commissionSuccess = await firebaseRequest.addReferralCommission(userData.telegramId, reward);
-        if (commissionSuccess) {
-          console.log('Referral commission added for ad watch');
-        }
-      }
-
-      return reward;
-    } catch (error) {
-      console.error('Error recording ad watch:', error);
-      alert('Error recording ad watch. Please try again.');
-      return 0;
     }
   };
 
@@ -1700,17 +1849,17 @@ setTimeout(checkDevice, 100);
     setIsLoading(false);
   };
 
-  const handleAdComplete = async (adId: number) => {
+  // UPDATED: handleAdComplete function that uses adId from Firebase
+  const handleAdComplete = async (adId: string) => {
     const reward = await recordAdWatch(adId);
     if (reward > 0) {
-      alert(`Ad completed! You earned ${walletConfig.currencySymbol} ${reward.toFixed(2)}`);
+      alert(`Ad completed! You earned ${walletConfig.currencySymbol} ${reward.toFixed(5)} ${walletConfig.currency}`);
     }
   };
 
   const onReady = (event: any) => {
     event.target.playVideo();
   };
-
 
   useEffect(() => {
     if (activeTab === 'home' && appConfig.sliderImages.length > 0) {
@@ -2001,6 +2150,7 @@ setTimeout(checkDevice, 100);
             onAdComplete={handleAdComplete}
             onCompleteTask={completeTask}
             onBack={() => { }}
+            adConfigs={adConfigs} // Pass ad configs to Earn component
           />
         );
 
@@ -2111,7 +2261,6 @@ setTimeout(checkDevice, 100);
             </p>
           </div>
         );
-
 
       default:
         return <div className="px-4 mt-6">Page not found</div>;
