@@ -33,6 +33,7 @@ interface UserData {
 interface WalletConfig {
   currency: string;
   currencySymbol: string;
+  currencyDecimals: number; // Added to handle decimal precision
   defaultMinWithdrawal: number;
   maintenanceMode: boolean;
   maintenanceMessage: string;
@@ -42,13 +43,29 @@ interface TransactionProps {
   userData: UserData | null;
   transactions: Transaction[];
   onBack: () => void;
-  walletConfig: WalletConfig; // Added walletConfig as prop
+  walletConfig: WalletConfig;
 }
 
 const Transaction: React.FC<TransactionProps> = ({ userData, transactions, onBack, walletConfig }) => {
   const [filter, setFilter] = useState<'all' | 'earn' | 'withdrawal'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const perPage = 3;
+
+  // Function to format numbers without losing precision
+  const formatAmount = (amount: number): string => {
+    if (amount === 0) return '0';
+    
+    // Convert to string to avoid floating point issues
+    const amountStr = amount.toString();
+    
+    // If it's in scientific notation, convert to decimal
+    if (amountStr.includes('e')) {
+      return amount.toFixed(20).replace(/\.?0+$/, '');
+    }
+    
+    // Remove trailing zeros after decimal point
+    return amountStr.replace(/\.?0+$/, '');
+  };
 
   const filteredTransactions = transactions.filter(transaction => {
     if (filter === 'all') return true;
@@ -127,13 +144,13 @@ const Transaction: React.FC<TransactionProps> = ({ userData, transactions, onBac
           <div className="text-center">
             <p className="text-blue-300 text-sm">Total Earned</p>
             <p className="text-green-400 font-bold text-lg">
-              {walletConfig.currency} {userData?.totalEarned?.toFixed(2) || '0.00'}
+              {walletConfig.currency} {userData?.totalEarned ? formatAmount(userData.totalEarned) : '0'}
             </p>
           </div>
           <div className="text-center">
             <p className="text-blue-300 text-sm">Total Withdrawn</p>
             <p className="text-red-400 font-bold text-lg">
-              {walletConfig.currency} {userData?.totalWithdrawn?.toFixed(2) || '0.00'}
+              {walletConfig.currency} {userData?.totalWithdrawn ? formatAmount(userData.totalWithdrawn) : '0'}
             </p>
           </div>
         </div>
@@ -211,7 +228,7 @@ const Transaction: React.FC<TransactionProps> = ({ userData, transactions, onBac
                           <span
                             className={`font-bold ${isEarn ? 'text-green-400' : 'text-red-400'}`}
                           >
-                            {isEarn ? '+' : '-'}{walletConfig.currencySymbol}{transaction.amount.toFixed(2)}
+                            {isEarn ? '+' : '-'}{walletConfig.currencySymbol}{formatAmount(transaction.amount)}
                           </span>
                         </div>
                         <p className="text-xs text-blue-300 mt-1">{transaction.description}</p>
