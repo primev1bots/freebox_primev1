@@ -36,16 +36,20 @@ interface Task {
 interface EarnProps {
   userData?: UserData | null;
   tasks: Task[];
-  onAdComplete: (adId: number) => Promise<void>;
   onCompleteTask: (taskId: string) => Promise<boolean>;
   onBack: () => void;
+  walletConfig?: {
+    currency: string;
+    currencySymbol: string;
+  };
 }
 
 const Earn: React.FC<EarnProps> = ({
   userData,
   tasks,
-  onAdComplete,
-  onCompleteTask }) => {
+  onCompleteTask,
+  walletConfig = { currency: 'USDT', currencySymbol: '' }
+}) => {
   const [activeTab] = useState<'ads' | 'tasks'>('ads');
   const [showDailyTasks, setShowDailyTasks] = useState(false);
   const [completedTaskReward, setCompletedTaskReward] = useState<number | null>(null);
@@ -108,7 +112,6 @@ const Earn: React.FC<EarnProps> = ({
         </div>
       </div>
 
-
       {/* Country Widget Quick Action */}
       <div className="rounded-3xl px-4 py-4 w-full h-full border border-[#014983]/30 cursor-pointer hover:bg-[#0f2235] transition-colors">
         <CountryWidget />
@@ -124,11 +127,11 @@ const Earn: React.FC<EarnProps> = ({
           <span className="text-white bg-clip-text font-bold tracking-wide underline decoration-[#ffff]/80 underline-offset-4">
             Ads Network
           </span>
-
         </h3>
       </div>
 
-      <AdsDashboard onAdComplete={onAdComplete} userData={userData} />
+      {/* AdsDashboard now handles all ad functionality internally */}
+      <AdsDashboard userData={userData} walletConfig={walletConfig} />
     </div>
   );
 
