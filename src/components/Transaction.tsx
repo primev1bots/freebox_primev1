@@ -234,7 +234,7 @@ const Transaction: React.FC<TransactionProps> = ({ userData, transactions, onBac
                             </span>
                             {transaction.accountNumber && (
                               <span className="text-xs text-blue-200 ml-2">
-                                • {transaction.accountNumber.slice(0, 4)}***{transaction.accountNumber.slice(-4)}
+                                • {transaction.accountNumber}
                               </span>
                             )}
                           </div>
