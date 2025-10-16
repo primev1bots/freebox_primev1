@@ -121,6 +121,7 @@ interface PaymentMethod {
 interface WalletConfig {
   currency: string;
   currencySymbol: string;
+  currencyDecimals: number;
   defaultMinWithdrawal: number;
   maintenanceMode: boolean;
   maintenanceMessage: string;
@@ -749,6 +750,7 @@ const firebaseRequest = {
         const defaultConfig: WalletConfig = {
           currency: 'USDT',
           currencySymbol: '',
+          currencyDecimals: 8,
           defaultMinWithdrawal: 10,
           maintenanceMode: false,
           maintenanceMessage: 'Wallet is under maintenance. Please try again later.'
@@ -761,6 +763,7 @@ const firebaseRequest = {
       return {
         currency: 'USDT',
         currencySymbol: '',
+        currencyDecimals: 8,
         defaultMinWithdrawal: 10,
         maintenanceMode: false,
         maintenanceMessage: 'Wallet is under maintenance. Please try again later.'
@@ -1000,6 +1003,7 @@ const AdminRoute: React.FC = () => {
   const [walletConfig, setWalletConfig] = useState<WalletConfig>({
     currency: 'USDT',
     currencySymbol: '',
+    currencyDecimals: 8,
     defaultMinWithdrawal: 10,
     maintenanceMode: false,
     maintenanceMessage: 'Wallet is under maintenance. Please try again later.'
@@ -1058,6 +1062,7 @@ const MainApp: React.FC = () => {
   const [walletConfig, setWalletConfig] = useState<WalletConfig>({
     currency: 'USDT',
     currencySymbol: '',
+    currencyDecimals: 8,
     defaultMinWithdrawal: 10,
     maintenanceMode: false,
     maintenanceMessage: 'Wallet is under maintenance. Please try again later.'
@@ -1265,6 +1270,7 @@ const MainApp: React.FC = () => {
         const defaultConfig: WalletConfig = {
           currency: 'USDT',
           currencySymbol: '',
+          currencyDecimals: 8,
           defaultMinWithdrawal: 10,
           maintenanceMode: false,
           maintenanceMessage: 'Wallet is under maintenance. Please try again later.'
