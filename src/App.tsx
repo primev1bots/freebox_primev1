@@ -1586,58 +1586,6 @@ const MainApp: React.FC = () => {
     }
   };
 
-  const recordAdWatch = async (_adId: number) => {
-    if (!userData) {
-      alert('User data not loaded. Please try again.');
-      return 0;
-    }
-
-    try {
-      const now = new Date();
-      const lastWatch = userData.lastAdWatch ? new Date(userData.lastAdWatch) : null;
-
-      let newAdsWatchedToday = userData.adsWatchedToday || 0;
-
-      if (lastWatch && lastWatch.toDateString() !== now.toDateString()) {
-        newAdsWatchedToday = 0;
-      }
-
-      const reward = 0.5;
-      const newBalance = userData.balance + reward;
-      const newTotalEarned = userData.totalEarned + reward;
-      const newAdsCount = newAdsWatchedToday + 1;
-
-      await firebaseRequest.updateUser(userData.telegramId, {
-        balance: newBalance,
-        totalEarned: newTotalEarned,
-        adsWatchedToday: newAdsCount,
-        lastAdWatch: now.toISOString()
-      });
-
-      await firebaseRequest.addTransaction({
-        userId: userData.telegramId.toString(),
-        type: 'earn',
-        amount: reward,
-        description: 'Watched advertisement',
-        status: 'completed',
-        createdAt: now.toISOString()
-      });
-
-      if (userData.referredBy) {
-        const commissionSuccess = await firebaseRequest.addReferralCommission(userData.telegramId, reward);
-        if (commissionSuccess) {
-          console.log('Referral commission added for ad watch');
-        }
-      }
-
-      return reward;
-    } catch (error) {
-      console.error('Error recording ad watch:', error);
-      alert('Error recording ad watch. Please try again.');
-      return 0;
-    }
-  };
-
   const processWithdrawal = async () => {
     if (!selectedMethod || !accountNumber || !amount || !userData) {
       alert('Please fill all fields correctly.');
@@ -1697,13 +1645,6 @@ const MainApp: React.FC = () => {
       alert("Withdrawal failed. Please check your inputs and try again.");
     }
     setIsLoading(false);
-  };
-
-  const handleAdComplete = async (adId: number) => {
-    const reward = await recordAdWatch(adId);
-    if (reward > 0) {
-      alert(`Ad completed! You earned ${walletConfig.currencySymbol} ${reward.toFixed(2)}`);
-    }
   };
 
   const onReady = (event: any) => {
@@ -1997,7 +1938,6 @@ const MainApp: React.FC = () => {
           <Earn
             userData={userData}
             tasks={tasks}
-            onAdComplete={handleAdComplete}
             onCompleteTask={completeTask}
             onBack={() => { }}
           />
