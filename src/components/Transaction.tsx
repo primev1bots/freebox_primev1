@@ -228,7 +228,7 @@ const Transaction: React.FC<TransactionProps> = ({ userData, transactions, onBac
                           <span
                             className={`font-bold ${isEarn ? 'text-green-400' : 'text-red-400'}`}
                           >
-                            {isEarn ? '+' : '-'}{walletConfig.currencySymbol}{formatAmount(transaction.amount)}
+                            {isEarn ? '+' : '-'}{formatAmount(transaction.amount)}{walletConfig.currencySymbol} 
                           </span>
                         </div>
                         <p className="text-xs text-blue-300 mt-1">{transaction.description}</p>
