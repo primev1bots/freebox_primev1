@@ -58,7 +58,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
     { 
       id: 1, 
       title: "Ads Task 1", 
-      description: "Earn $0.50 per ad", 
+      description: "", 
       watched: 0, 
       dailyLimit: 5, 
       hourlyLimit: 2, 
@@ -72,7 +72,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
     { 
       id: 2, 
       title: "Ads Task 2", 
-      description: "Earn $0.50 per ad", 
+      description: "", 
       watched: 0, 
       dailyLimit: 5, 
       hourlyLimit: 2, 
@@ -86,7 +86,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
     { 
       id: 3, 
       title: "Ads Task 3", 
-      description: "Earn $0.50 per ad", 
+      description: "", 
       watched: 0, 
       dailyLimit: 5, 
       hourlyLimit: 2, 
@@ -100,7 +100,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
     { 
       id: 4, 
       title: "Ads Task 4", 
-      description: "Earn $0.50 per ad", 
+      description: "", 
       watched: 0, 
       dailyLimit: 5, 
       hourlyLimit: 2, 
@@ -114,7 +114,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
     { 
       id: 5, 
       title: "Ads Task 5", 
-      description: "Earn $0.50 per ad", 
+      description: "", 
       watched: 0, 
       dailyLimit: 5, 
       hourlyLimit: 2, 
@@ -128,7 +128,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
     { 
       id: 6, 
       title: "Ads Task 6", 
-      description: "Earn $0.50 per ad", 
+      description: "", 
       watched: 0, 
       dailyLimit: 5, 
       hourlyLimit: 2, 
@@ -410,7 +410,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
               enabled: adConfig.enabled !== false,
               waitTime: adConfig.waitTime ?? ad.waitTime,
               appId: adConfig.appId ?? ad.appId,
-              description: `Earn $${adConfig.reward ?? ad.reward} per ad`
+              description: `${walletConfig.currency} ${adConfig.reward ?? ad.reward} per ad`
             };
           }
           return ad;
@@ -429,7 +429,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
     });
 
     return () => unsubscribe();
-  }, [database]);
+  }, [database, walletConfig.currencySymbol]); // Added currencySymbol dependency
 
   // Load user's ad watch history with reset check
   React.useEffect(() => {
@@ -534,7 +534,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
                       window.showAd = show;
                       setScriptLoaded(prev => ({ ...prev, onclicka: true }));
                       setScriptsInitialized(prev => ({ ...prev, onclicka: true }));
-                      showMessage('info', 'Onclicka ads are ready!');
                     })
                     .catch((error: any) => {
                       console.error('Failed to initialize Onclicka:', error);
@@ -943,7 +942,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
             <div>
               <h3 className="font-bold text-white text-lg">{ad.title}</h3>
               <p className="text-[12px] text-blue-300 mt-1">{ad.description}</p>
-              {!scriptLoaded[ad.provider] && <p className="text-[10px] text-yellow-500 mt-1">Loading ad service...</p>}
             </div>
           </div>
 
