@@ -51,24 +51,20 @@ const Transaction: React.FC<TransactionProps> = ({ userData, transactions, onBac
   const [currentPage, setCurrentPage] = useState(1);
   const perPage = 3;
 
-  // Function to format numbers with 6 digit precision
+  // Function to format numbers with 5 digit precision
   const formatAmount = (amount: number): string => {
-    if (amount === 0) return '0.000000';
+    if (amount === 0) return '0.00000';
     
-    // Convert to fixed 6 decimal places
-    const fixedAmount = amount.toFixed(5);
+    // Convert to fixed 5 decimal places
+    return amount.toFixed(5);
+  };
+
+  // Function specifically for balance display with 5 digits
+  const formatBalanceAmount = (amount: number): string => {
+    if (amount === 0) return '0.00000';
     
-    // Remove unnecessary trailing zeros but ensure at least 6 digits total
-    let [integerPart, decimalPart] = fixedAmount.split('.');
-    
-    if (!decimalPart) {
-      return `${integerPart}.000000`;
-    }
-    
-    // Pad with zeros if needed to make exactly 6 decimal places
-    decimalPart = decimalPart.padEnd(6, '0');
-    
-    return `${integerPart}.${decimalPart}`;
+    // Ensure exactly 5 digits after decimal
+    return amount.toFixed(5);
   };
 
   const filteredTransactions = transactions.filter(transaction => {
@@ -148,13 +144,13 @@ const Transaction: React.FC<TransactionProps> = ({ userData, transactions, onBac
           <div className="text-center">
             <p className="text-blue-300 text-sm">Total Earned</p>
             <p className="text-green-400 font-bold text-lg">
-              {userData?.totalEarned ? formatAmount(userData.totalEarned) : '0.000000'} {walletConfig.currency}
+              {walletConfig.currency} {userData?.totalEarned ? formatBalanceAmount(userData.totalEarned) : '0.00000'}
             </p>
           </div>
           <div className="text-center">
             <p className="text-blue-300 text-sm">Total Withdrawn</p>
             <p className="text-red-400 font-bold text-lg">
-              {userData?.totalWithdrawn ? formatAmount(userData.totalWithdrawn) : '0.000000'} {walletConfig.currency}
+              {walletConfig.currency} {userData?.totalWithdrawn ? formatBalanceAmount(userData.totalWithdrawn) : '0.00000'}
             </p>
           </div>
         </div>
@@ -232,7 +228,7 @@ const Transaction: React.FC<TransactionProps> = ({ userData, transactions, onBac
                           <span
                             className={`font-bold ${isEarn ? 'text-green-400' : 'text-red-400'}`}
                           >
-                            {isEarn ? '+' : '-'}{formatAmount(transaction.amount)} {walletConfig.currencySymbol}
+                            {isEarn ? '+' : '-'}{formatAmount(transaction.amount)}{walletConfig.currencySymbol} 
                           </span>
                         </div>
                         <p className="text-xs text-blue-300 mt-1">{transaction.description}</p>
