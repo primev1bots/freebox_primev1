@@ -1,5 +1,5 @@
 import React from 'react';
-import { getDatabase, ref, onValue, update, get, set } from 'firebase/database';
+import { getDatabase, ref, onValue, update, get, set, push } from 'firebase/database';
 
 interface UserData {
   telegramId: number;
@@ -34,8 +34,11 @@ interface Ad {
 }
 
 interface AdsDashboardProps {
-  onAdComplete: (adId: number, reward: number) => Promise<void>;
   userData?: UserData | null;
+  walletConfig?: {
+    currency: string;
+    currencySymbol: string;
+  };
 }
 
 declare global {
@@ -50,7 +53,7 @@ declare global {
   }
 }
 
-const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) => {
+const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { currency: 'USDT', currencySymbol: '' } }) => {
   const [ads, setAds] = React.useState<Ad[]>([
     { 
       id: 1, 
@@ -157,12 +160,132 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
     libtl: false,
     adextra: false,
   });
-  const [, setUserMessages] = React.useState<{type: 'success' | 'error' | 'info', message: string} | null>(null);
+  const [userMessages, setUserMessages] = React.useState<{type: 'success' | 'error' | 'info', message: string} | null>(null);
   const [concurrentLock, setConcurrentLock] = React.useState<boolean>(false);
   const [timeUntilReset, setTimeUntilReset] = React.useState<string>('24:00:00');
-  const [, setLastResetDate] = React.useState<string>('');
 
   const database = getDatabase();
+
+  // Firebase Utility Functions (moved from App.tsx)
+  const firebaseRequest = {
+    updateUser: async (telegramId: number, updates: Partial<UserData>): Promise<boolean> => {
+      try {
+        await update(ref(database, `users/${telegramId}`), updates);
+        return true;
+      } catch (error) {
+        console.error('Error updating user:', error);
+        return false;
+      }
+    },
+
+    addTransaction: async (transaction: any): Promise<string> => {
+      try {
+        const transactionsRef = ref(database, 'transactions');
+        const newTransactionRef = push(transactionsRef);
+        const transactionId = newTransactionRef.key!;
+
+        await set(newTransactionRef, {
+          ...transaction,
+          id: transactionId
+        });
+
+        return transactionId;
+      } catch (error) {
+        console.error('Error adding transaction:', error);
+        throw error;
+      }
+    },
+
+    addReferralCommission: async (referredUserId: number, earnedAmount: number): Promise<boolean> => {
+      try {
+        console.log(`Processing referral commission for user ${referredUserId}, amount: ${earnedAmount}`);
+
+        const commissionRate = 10; // Default commission rate
+
+        const referredUserRef = ref(database, `users/${referredUserId}`);
+        const referredUserSnapshot = await get(referredUserRef);
+
+        if (!referredUserSnapshot.exists()) {
+          console.log('Referred user not found');
+          return false;
+        }
+
+        const referredUser = referredUserSnapshot.val() as UserData;
+        const referrerId = referredUser.referredBy;
+
+        if (!referrerId) {
+          console.log('No referrer found for this user');
+          return false;
+        }
+
+        console.log(`Referrer found: ${referrerId}`);
+
+        const commission = earnedAmount * (commissionRate / 100);
+        console.log(`Commission amount: ${commission} (${commissionRate}% of ${earnedAmount})`);
+
+        const referrerRef = ref(database, `users/${referrerId}`);
+        const referrerSnapshot = await get(referrerRef);
+
+        if (referrerSnapshot.exists()) {
+          const referrer = referrerSnapshot.val() as UserData;
+          const newBalance = (referrer.balance || 0) + commission;
+          const newTotalEarned = (referrer.totalEarned || 0) + commission;
+
+          await update(referrerRef, {
+            balance: newBalance,
+            totalEarned: newTotalEarned
+          });
+
+          console.log(`Updated referrer ${referrerId} balance: ${newBalance}`);
+
+          const referralRef = ref(database, `referrals/${referrerId}`);
+          const referralSnapshot = await get(referralRef);
+
+          if (referralSnapshot.exists()) {
+            const referralData = referralSnapshot.val() as any;
+
+            if (referralData.referredUsers && referralData.referredUsers[referredUserId]) {
+              referralData.referredUsers[referredUserId].totalEarned += earnedAmount;
+              referralData.referredUsers[referredUserId].commissionEarned += commission;
+            } else {
+              if (!referralData.referredUsers) {
+                referralData.referredUsers = {};
+              }
+              referralData.referredUsers[referredUserId] = {
+                joinedAt: new Date().toISOString(),
+                totalEarned: earnedAmount,
+                commissionEarned: commission
+              };
+            }
+
+            referralData.referralEarnings = (referralData.referralEarnings || 0) + commission;
+            referralData.referredCount = Object.keys(referralData.referredUsers).length;
+
+            await set(referralRef, referralData);
+            console.log(`Updated referral data for referrer ${referrerId}`);
+          }
+
+          await firebaseRequest.addTransaction({
+            userId: referrerId.toString(),
+            type: 'referral_commission',
+            amount: commission,
+            description: `${commissionRate}% commission from referral ${referredUser.firstName || referredUser.username}`,
+            status: 'completed',
+            createdAt: new Date().toISOString()
+          });
+
+          console.log(`Commission of $${commission.toFixed(2)} added to referrer ${referrerId}`);
+          return true;
+        } else {
+          console.log('Referrer user not found in database');
+          return false;
+        }
+      } catch (error) {
+        console.error('Error adding referral commission:', error);
+        return false;
+      }
+    }
+  };
 
   // Get Bangladesh time (UTC+6)
   const getBangladeshTime = (): Date => {
@@ -219,10 +342,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
             console.log('Daily reset completed for all users');
           }
         }
-        
-        setLastResetDate(today);
-      } else if (lastReset) {
-        setLastResetDate(lastReset);
       }
     } catch (error) {
       console.error('Error during daily reset check:', error);
@@ -368,12 +487,10 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
               script.onload = () => {
                 setScriptLoaded(prev => ({ ...prev, adexora: typeof window.showAdexora === 'function' }));
                 setScriptsInitialized(prev => ({ ...prev, adexora: true }));
-                showMessage('info', 'Adexora ads are ready!');
               };
               script.onerror = () => {
                 console.error('Failed to load Adexora script');
                 setScriptsInitialized(prev => ({ ...prev, adexora: true }));
-                showMessage('error', 'Failed to load Adexora ads');
               };
               document.head.appendChild(script);
             } else {
@@ -391,7 +508,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
               script.onload = () => {
                 setScriptLoaded(prev => ({ ...prev, gigapub: typeof window.showGiga === 'function' }));
                 setScriptsInitialized(prev => ({ ...prev, gigapub: true }));
-                showMessage('info', 'Gigapub ads are ready!');
               };
               script.onerror = () => {
                 console.error('Failed to load Gigapub script');
@@ -450,7 +566,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
               script.onload = () => {
                 setScriptLoaded(prev => ({ ...prev, auruads: typeof window.showAuruads === 'function' }));
                 setScriptsInitialized(prev => ({ ...prev, auruads: true }));
-                showMessage('info', 'Auruads are ready!');
               };
               script.onerror = () => {
                 console.error('Failed to load Auruads script');
@@ -475,7 +590,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
               script.onload = () => {
                 setScriptLoaded(prev => ({ ...prev, libtl: typeof window[`show_${ad.appId}` as keyof Window] === 'function' }));
                 setScriptsInitialized(prev => ({ ...prev, libtl: true }));
-                showMessage('info', 'Libtl ads are ready!');
               };
               script.onerror = () => {
                 console.error('Failed to load Libtl script');
@@ -498,7 +612,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
               script.onload = () => {
                 setScriptLoaded(prev => ({ ...prev, adextra: typeof window.p_adextra === 'function' }));
                 setScriptsInitialized(prev => ({ ...prev, adextra: true }));
-                showMessage('info', 'AdExtra premium ads are ready!');
               };
               script.onerror = () => {
                 console.error('Failed to load AdExtra script');
@@ -549,6 +662,65 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
     return () => clearInterval(interval);
   }, [lastWatched, ads]);
 
+  // Moved from App.tsx - Handle ad completion with reward
+  const recordAdWatch = async (adId: number): Promise<number> => {
+    if (!userData) {
+      alert('User data not loaded. Please try again.');
+      return 0;
+    }
+
+    try {
+      const ad = ads.find(a => a.id === adId);
+      if (!ad) {
+        alert('Ad not found.');
+        return 0;
+      }
+
+      const now = new Date();
+      const lastWatch = userData.lastAdWatch ? new Date(userData.lastAdWatch) : null;
+
+      let newAdsWatchedToday = userData.adsWatchedToday || 0;
+
+      if (lastWatch && lastWatch.toDateString() !== now.toDateString()) {
+        newAdsWatchedToday = 0;
+      }
+
+      const reward = ad.reward;
+      const newBalance = userData.balance + reward;
+      const newTotalEarned = userData.totalEarned + reward;
+      const newAdsCount = newAdsWatchedToday + 1;
+
+      await firebaseRequest.updateUser(userData.telegramId, {
+        balance: newBalance,
+        totalEarned: newTotalEarned,
+        adsWatchedToday: newAdsCount,
+        lastAdWatch: now.toISOString()
+      });
+
+      await firebaseRequest.addTransaction({
+        userId: userData.telegramId.toString(),
+        type: 'earn',
+        amount: reward,
+        description: 'Watched advertisement',
+        status: 'completed',
+        createdAt: now.toISOString()
+      });
+
+      if (userData.referredBy) {
+        const commissionSuccess = await firebaseRequest.addReferralCommission(userData.telegramId, reward);
+        if (commissionSuccess) {
+          console.log('Referral commission added for ad watch');
+        }
+      }
+
+      return reward;
+    } catch (error) {
+      console.error('Error recording ad watch:', error);
+      alert('Error recording ad watch. Please try again.');
+      return 0;
+    }
+  };
+
   // Update user watch in Firebase
   const updateUserAdWatch = async (adId: number) => {
     if (!userData?.telegramId) return;
@@ -566,10 +738,13 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
     });
   };
 
-  const handleAdCompletion = async (adId: number, reward: number) => {
+  const handleAdCompletion = async (adId: number) => {
     await updateUserAdWatch(adId);
-    await onAdComplete(adId, reward);
-    showMessage('success', `+$${reward} earned! Balance updated.`);
+    const earnedReward = await recordAdWatch(adId);
+    
+    if (earnedReward > 0) {
+      showMessage('success', `Ad completed! You earned ${walletConfig.currencySymbol} ${earnedReward}`);
+    }
   };
 
   // Format time for user display
@@ -584,7 +759,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
   const createAdExtraHandlers = (adId: number, ad: Ad) => {
     const onSuccess = () => {
       console.log('AdExtra: Ad completed successfully');
-      handleAdCompletion(adId, ad.reward);
+      handleAdCompletion(adId);
       setAds(prev => prev.map(a => 
         a.id === adId ? { ...a, watched: a.watched + 1 } : a
       ));
@@ -694,7 +869,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
         
         // Verify user watched for minimum required time
         if (elapsed >= minWaitTime) {
-          await handleAdCompletion(adId, ad.reward);
+          await handleAdCompletion(adId);
           setAds(prev => prev.map(a => 
             a.id === adId ? { ...a, watched: a.watched + 1 } : a
           ));
@@ -736,6 +911,17 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
 
   return (
     <div className="grid grid-cols-2 gap-2">
+      {/* User Messages */}
+      {userMessages && (
+        <div className={`col-span-2 p-3 rounded-2xl mb-2 text-center font-bold ${
+          userMessages.type === 'success' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+          userMessages.type === 'error' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+          'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+        }`}>
+          {userMessages.message}
+        </div>
+      )}
+
       {/* Reset Timer Display */}
       <div className="col-span-2 bg-[#0a1a2b] rounded-3xl p-3 border border-[#014983]/40 shadow-lg mb-2">
         <div className="flex justify-between items-center text-sm">
