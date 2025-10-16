@@ -161,7 +161,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
   const [concurrentLock, setConcurrentLock] = React.useState<boolean>(false);
   const [timeUntilReset, setTimeUntilReset] = React.useState<string>('24:00:00');
   const [, setLastResetDate] = React.useState<string>('');
-  const [adextraCallbacks, setAdextraCallbacks] = React.useState<{onSuccess: (() => void) | null, onError: (() => void) | null}>({ onSuccess: null, onError: null });
 
   const database = getDatabase();
 
@@ -353,49 +352,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
     }
   }, [database, userData?.telegramId]);
 
-  // AdExtra completion handler
-  const handleAdExtraCompletion = React.useCallback(async (adId: number) => {
-    const ad = ads.find(a => a.id === adId);
-    if (!ad || !userData?.telegramId) return;
-
-    try {
-      // Update user watch in Firebase
-      const userAdRef = ref(database, `userAds/${userData.telegramId}/${ad.provider}`);
-      const now = new Date().toISOString();
-
-      await update(userAdRef, {
-        watchedToday: (ad.watched || 0) + 1,
-        lastWatched: now,
-        lastUpdated: now
-      });
-
-      // Update balance
-      await onAdComplete(adId, ad.reward);
-      
-      // Update local state
-      setAds(prev => prev.map(a => 
-        a.id === adId ? { ...a, watched: a.watched + 1 } : a
-      ));
-      setLastWatched(prev => ({ ...prev, [ad.provider]: new Date() }));
-      
-      showMessage('success', `+$${ad.reward} earned! Balance updated.`);
-    } catch (error) {
-      console.error('Error handling AdExtra completion:', error);
-      showMessage('error', 'Error updating balance. Please try again.');
-    } finally {
-      setConcurrentLock(false);
-      setIsWatchingAd(null);
-    }
-  }, [ads, userData?.telegramId, database, onAdComplete]);
-
-  // AdExtra error handler
-  const handleAdExtraError = React.useCallback((adId: number) => {
-    console.log('AdExtra: Ad failed to load or was skipped');
-    showMessage('error', 'Ad failed to load. Please try again.');
-    setConcurrentLock(false);
-    setIsWatchingAd(null);
-  }, []);
-
   // Load ad provider scripts with dynamic App IDs
   React.useEffect(() => {
     const initializeScripts = () => {
@@ -540,7 +496,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
               script.src = `https://partner.adextra.io/jt/${ad.appId}.js`;
               script.async = true;
               script.onload = () => {
-                console.log('AdExtra script loaded successfully');
                 setScriptLoaded(prev => ({ ...prev, adextra: typeof window.p_adextra === 'function' }));
                 setScriptsInitialized(prev => ({ ...prev, adextra: true }));
                 showMessage('info', 'AdExtra premium ads are ready!');
@@ -594,12 +549,58 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
     return () => clearInterval(interval);
   }, [lastWatched, ads]);
 
+  // Update user watch in Firebase
+  const updateUserAdWatch = async (adId: number) => {
+    if (!userData?.telegramId) return;
+
+    const ad = ads.find(a => a.id === adId);
+    if (!ad) return;
+
+    const userAdRef = ref(database, `userAds/${userData.telegramId}/${ad.provider}`);
+    const now = new Date().toISOString();
+
+    await update(userAdRef, {
+      watchedToday: (ad.watched || 0) + 1,
+      lastWatched: now,
+      lastUpdated: now
+    });
+  };
+
+  const handleAdCompletion = async (adId: number, reward: number) => {
+    await updateUserAdWatch(adId);
+    await onAdComplete(adId, reward);
+    showMessage('success', `+$${reward} earned! Balance updated.`);
+  };
+
   // Format time for user display
   const formatTime = (seconds: number): string => {
     if (seconds < 60) return `${seconds}s`;
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}m ${remainingSeconds}s`;
+  };
+
+  // AdExtra specific handlers
+  const createAdExtraHandlers = (adId: number, ad: Ad) => {
+    const onSuccess = () => {
+      console.log('AdExtra: Ad completed successfully');
+      handleAdCompletion(adId, ad.reward);
+      setAds(prev => prev.map(a => 
+        a.id === adId ? { ...a, watched: a.watched + 1 } : a
+      ));
+      setLastWatched(prev => ({ ...prev, [ad.provider]: new Date() }));
+      setConcurrentLock(false);
+      setIsWatchingAd(null);
+    };
+
+    const onError = () => {
+      console.log('AdExtra: Ad failed to load or was skipped');
+      showMessage('error', 'Ad failed to load. Please try again.');
+      setConcurrentLock(false);
+      setIsWatchingAd(null);
+    };
+
+    return { onSuccess, onError };
   };
 
   // Show ad with comprehensive checks and concurrency handling
@@ -680,27 +681,10 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
         }
       } else if (ad.provider === 'adextra' && window.p_adextra) {
         // AdExtra uses callback-based approach instead of Promise
-        console.log('Starting AdExtra ad...');
-        
-        // Create callbacks for AdExtra
-        const onSuccess = () => {
-          console.log('AdExtra: Ad completed successfully');
-          handleAdExtraCompletion(adId);
-        };
-
-        const onError = () => {
-          console.log('AdExtra: Ad failed to load or was skipped');
-          handleAdExtraError(adId);
-        };
-
-        // Store callbacks for cleanup
-        setAdextraCallbacks({ onSuccess, onError });
-        
-        // Start AdExtra ad
+        const { onSuccess, onError } = createAdExtraHandlers(adId, ad);
         window.p_adextra(onSuccess, onError);
-        
-        // Return early since AdExtra handles completion via callbacks
-        return;
+        // For AdExtra, we don't set adCompleted here since it uses callbacks
+        return; // Return early since AdExtra handles completion via callbacks
       } else {
         throw new Error('Ad provider function not available');
       }
@@ -710,28 +694,11 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
         
         // Verify user watched for minimum required time
         if (elapsed >= minWaitTime) {
-          // Update user watch in Firebase
-          if (userData?.telegramId) {
-            const userAdRef = ref(database, `userAds/${userData.telegramId}/${ad.provider}`);
-            const nowISO = new Date().toISOString();
-
-            await update(userAdRef, {
-              watchedToday: (ad.watched || 0) + 1,
-              lastWatched: nowISO,
-              lastUpdated: nowISO
-            });
-          }
-
-          // Update balance
-          await onAdComplete(adId, ad.reward);
-          
-          // Update local state
+          await handleAdCompletion(adId, ad.reward);
           setAds(prev => prev.map(a => 
             a.id === adId ? { ...a, watched: a.watched + 1 } : a
           ));
           setLastWatched(prev => ({ ...prev, [ad.provider]: now }));
-          
-          showMessage('success', `+$${ad.reward} earned! Balance updated.`);
         } else {
           throw new Error(`Please watch the ad completely (minimum ${minWaitTime} seconds)`);
         }
@@ -791,9 +758,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
               <h3 className="font-bold text-white text-lg">{ad.title}</h3>
               <p className="text-[12px] text-blue-300 mt-1">{ad.description}</p>
               {!scriptLoaded[ad.provider] && <p className="text-[10px] text-yellow-500 mt-1">Loading ad service...</p>}
-              {ad.provider === 'adextra' && scriptLoaded[ad.provider] && (
-                <p className="text-[10px] text-green-400 mt-1">Premium ads ready!</p>
-              )}
             </div>
           </div>
 
