@@ -56,7 +56,7 @@ const Transaction: React.FC<TransactionProps> = ({ userData, transactions, onBac
     if (amount === 0) return '0.000000';
     
     // Convert to fixed 6 decimal places
-    const fixedAmount = amount.toFixed(6);
+    const fixedAmount = amount.toFixed(5);
     
     // Remove unnecessary trailing zeros but ensure at least 6 digits total
     let [integerPart, decimalPart] = fixedAmount.split('.');
