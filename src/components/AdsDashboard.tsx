@@ -51,7 +51,35 @@ declare global {
 }
 
 const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) => {
-  const [ads, setAds] = React.useState<Ad[]>([
+  const [ads, setAds] = React.useState<Ad[]>([]);
+  const [isWatchingAd, setIsWatchingAd] = React.useState<number | null>(null);
+  const [scriptLoaded, setScriptLoaded] = React.useState<Record<string, boolean>>({
+    adexora: false,
+    gigapub: false,
+    onclicka: false,
+    auruads: false,
+    libtl: false,
+    adextra: false,
+  });
+  const [cooldowns, setCooldowns] = React.useState<Record<string, number>>({});
+  const [lastWatched, setLastWatched] = React.useState<Record<string, Date>>({});
+  const [scriptsInitialized, setScriptsInitialized] = React.useState<Record<string, boolean>>({
+    adexora: false,
+    gigapub: false,
+    onclicka: false,
+    auruads: false,
+    libtl: false,
+    adextra: false,
+  });
+  const [, setUserMessages] = React.useState<{type: 'success' | 'error' | 'info', message: string} | null>(null);
+  const [concurrentLock, setConcurrentLock] = React.useState<boolean>(false);
+  const [timeUntilReset, setTimeUntilReset] = React.useState<string>('24:00:00');
+  const [, setLastResetDate] = React.useState<string>('');
+
+  const database = getDatabase();
+
+  // Default ads configuration
+  const defaultAds: Ad[] = [
     { 
       id: 1, 
       title: "Ads Task 1", 
@@ -136,33 +164,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
       enabled: true,
       appId: 'c573986974ab6f6b9e52bb47e7a296e25a2db758'
     },
-  ]);
-
-  const [isWatchingAd, setIsWatchingAd] = React.useState<number | null>(null);
-  const [scriptLoaded, setScriptLoaded] = React.useState<Record<string, boolean>>({
-    adexora: false,
-    gigapub: false,
-    onclicka: false,
-    auruads: false,
-    libtl: false,
-    adextra: false,
-  });
-  const [cooldowns, setCooldowns] = React.useState<Record<string, number>>({});
-  const [lastWatched, setLastWatched] = React.useState<Record<string, Date>>({});
-  const [scriptsInitialized, setScriptsInitialized] = React.useState<Record<string, boolean>>({
-    adexora: false,
-    gigapub: false,
-    onclicka: false,
-    auruads: false,
-    libtl: false,
-    adextra: false,
-  });
-  const [, setUserMessages] = React.useState<{type: 'success' | 'error' | 'info', message: string} | null>(null);
-  const [concurrentLock, setConcurrentLock] = React.useState<boolean>(false);
-  const [timeUntilReset, setTimeUntilReset] = React.useState<string>('24:00:00');
-  const [, setLastResetDate] = React.useState<string>('');
-
-  const database = getDatabase();
+  ];
 
   // Get Bangladesh time (UTC+6)
   const getBangladeshTime = (): Date => {
@@ -273,16 +275,19 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
     setTimeout(() => setUserMessages(null), 4000);
   };
 
-  // Load ads configuration from Firebase
+  // Load ads configuration from Firebase - FIXED VERSION
   React.useEffect(() => {
     const adsRef = ref(database, 'ads');
     const unsubscribe = onValue(adsRef, (snapshot) => {
       if (snapshot.exists()) {
         const adsData: Record<string, any> = snapshot.val();
-        const updatedAds = ads.map(ad => {
+        console.log('Loaded ads config from Firebase:', adsData);
+        
+        // Create updated ads array based on Firebase config
+        const updatedAds = defaultAds.map(ad => {
           const adConfig = adsData[ad.provider];
           if (adConfig) {
-            return {
+            const updatedAd = {
               ...ad,
               reward: adConfig.reward ?? ad.reward,
               dailyLimit: adConfig.dailyLimit ?? ad.dailyLimit,
@@ -291,13 +296,17 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
               enabled: adConfig.enabled !== false,
               waitTime: adConfig.waitTime ?? ad.waitTime,
               appId: adConfig.appId ?? ad.appId,
-              description: `Earn $${adConfig.reward ?? ad.reward} per ad`
+              description: `Earn $${(adConfig.reward ?? ad.reward).toFixed(2)} per ad`
             };
+            console.log(`Updated ad ${ad.provider}:`, updatedAd);
+            return updatedAd;
           }
           return ad;
         });
+        
         setAds(updatedAds);
         
+        // Reset script initialization state to reload scripts with new config
         setScriptsInitialized({
           adexora: false,
           gigapub: false,
@@ -306,6 +315,10 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
           libtl: false,
           adextra: false,
         });
+      } else {
+        // If no Firebase config, use defaults
+        console.log('No Firebase ads config found, using defaults');
+        setAds(defaultAds);
       }
     });
 
@@ -352,11 +365,13 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
     }
   }, [database, userData?.telegramId]);
 
-  // Load ad provider scripts with dynamic App IDs
+  // Load ad provider scripts with dynamic App IDs - FIXED VERSION
   React.useEffect(() => {
     const initializeScripts = () => {
       ads.forEach(ad => {
         if (!ad.enabled || scriptsInitialized[ad.provider]) return;
+
+        console.log(`Initializing script for ${ad.provider} with appId: ${ad.appId}`);
 
         switch (ad.provider) {
           case 'adexora':
@@ -515,7 +530,9 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
       });
     };
 
-    initializeScripts();
+    if (ads.length > 0) {
+      initializeScripts();
+    }
   }, [ads, scriptsInitialized]);
 
   // Clean up scripts when component unmounts
@@ -569,7 +586,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
   const handleAdCompletion = async (adId: number, reward: number) => {
     await updateUserAdWatch(adId);
     await onAdComplete(adId, reward);
-    showMessage('success', `+$${reward} earned! Balance updated.`);
+    showMessage('success', `+$${reward.toFixed(2)} earned! Balance updated.`);
   };
 
   // Format time for user display
@@ -733,6 +750,15 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ onAdComplete, userData }) =
     if (isWatchingAd === ad.id) return "Watching Ad...";
     return "Watch Now";
   };
+
+  // Don't render until ads are loaded
+  if (ads.length === 0) {
+    return (
+      <div className="flex justify-center items-center p-8">
+        <div className="text-blue-300">Loading ads configuration...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-2 gap-2">
