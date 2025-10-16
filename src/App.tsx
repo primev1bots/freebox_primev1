@@ -1699,14 +1699,7 @@ setTimeout(checkDevice, 100);
     }
     setIsLoading(false);
   };
-
-  const handleAdComplete = async (adId: number) => {
-    const reward = await recordAdWatch(adId);
-    if (reward > 0) {
-      alert(`Ad completed! You earned ${walletConfig.currencySymbol} ${reward.toFixed(2)}`);
-    }
-  };
-
+  
   const onReady = (event: any) => {
     event.target.playVideo();
   };
