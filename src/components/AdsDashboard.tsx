@@ -137,7 +137,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({ userData, walletConfig = { 
       cooldown: 60, 
       reward: 0.5, 
       enabled: true,
-      appId: 'c573986974ab6f6b9e52bb47e7a296e25a2db758'
+      appId: '548ea4595a2ffffd604e1053f785f97efe571bee'
     },
   ]);
 
