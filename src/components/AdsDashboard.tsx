@@ -32,7 +32,7 @@ interface Ad {
   cooldown: number;
   reward: number;
   enabled: boolean;
-  appId: string; // for other providers; AdExtra uses script from index.html
+  appId: string; // other providers use this; AdExtra uses script from index.html
   lastWatched?: Date;
 }
 
@@ -41,16 +41,20 @@ interface AdsDashboardProps {
   walletConfig?: { currency: string; currencySymbol: string };
 }
 
-// ==== Global for AdExtra (provided by the <script> in index.html) ====
+// ==== Globals (from providers' scripts & index.html) ====
 declare global {
   interface Window {
+    // callback-based AdExtra defined in index.html
     p_adextra?: (onSuccess: () => void, onError: () => void) => void;
-    // other ad providers can be kept if you use them:
+
+    // other providers (optional)
     showAdexora?: () => Promise<void>;
     showGiga?: () => Promise<void>;
     showAd?: () => Promise<void>;
     showAuruads?: () => Promise<void>;
     initCdTma?: any;
+
+    // libtl dynamic function name pattern show_<zoneId>
     [k: string]: any;
   }
 }
@@ -71,13 +75,27 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
   ]);
 
   const [isWatchingAd, setIsWatchingAd] = React.useState<number | null>(null);
+  const [scriptLoaded, setScriptLoaded] = React.useState<Record<Provider, boolean>>({
+    adexora: false,
+    gigapub: false,
+    onclicka: false,
+    auruads: false,
+    libtl: false,
+    adextra: true, // AdExtra comes from index.html; don't gate on dynamic loading
+  });
+  const [scriptsInitialized, setScriptsInitialized] = React.useState<Record<Provider, boolean>>({
+    adexora: false,
+    gigapub: false,
+    onclicka: false,
+    auruads: false,
+    libtl: false,
+    adextra: true,
+  });
   const [cooldowns, setCooldowns] = React.useState<Record<string, number>>({});
   const [lastWatched, setLastWatched] = React.useState<Record<string, Date>>({});
   const [userMessages, setUserMessages] = React.useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [concurrentLock, setConcurrentLock] = React.useState<boolean>(false);
   const [timeUntilReset, setTimeUntilReset] = React.useState<string>('24:00:00');
-
-  // NOTE: removed scriptLoaded & scriptsInitialized entirely for AdExtra approach.
 
   const database = getDatabase();
 
@@ -87,7 +105,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
     setTimeout(() => setUserMessages(null), 4000);
   };
 
-  // Bangladesh time helpers
   const getBangladeshTime = (): Date => {
     const now = new Date();
     const utc = now.getTime() + now.getTimezoneOffset() * 60000;
@@ -252,9 +269,18 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
           };
         })
       );
+      // reset script init flags for 1–5 after config changes
+      setScriptsInitialized((prev) => ({
+        ...prev,
+        adexora: false,
+        gigapub: false,
+        onclicka: false,
+        auruads: false,
+        libtl: false,
+      }));
     });
     return () => unsubscribe();
-  }, [database, walletConfig.currency]); // use currency (you build description with it)
+  }, [database, walletConfig.currency]);
 
   // ==== Load user's ad watch history ====
   React.useEffect(() => {
@@ -300,6 +326,133 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
     }, 1000);
     return () => clearInterval(iv);
   }, [lastWatched, ads]);
+
+  // ==== Provider scripts (dynamic) — for providers 1–5 only ====
+  React.useEffect(() => {
+    const initScripts = () => {
+      ads.forEach((ad) => {
+        if (!ad.enabled || scriptsInitialized[ad.provider]) return;
+        switch (ad.provider) {
+          case 'adexora': {
+            if (!document.getElementById('adexora-script')) {
+              const s = document.createElement('script');
+              s.id = 'adexora-script';
+              s.src = `https://adexora.com/cdn/ads.js?id=${ad.appId}`;
+              s.async = true;
+              s.onload = () => {
+                setScriptLoaded((p) => ({ ...p, adexora: typeof window.showAdexora === 'function' }));
+                setScriptsInitialized((p) => ({ ...p, adexora: true }));
+              };
+              s.onerror = () => setScriptsInitialized((p) => ({ ...p, adexora: true }));
+              document.head.appendChild(s);
+            } else {
+              setScriptLoaded((p) => ({ ...p, adexora: true }));
+              setScriptsInitialized((p) => ({ ...p, adexora: true }));
+            }
+            break;
+          }
+          case 'gigapub': {
+            if (!document.getElementById('gigapub-script')) {
+              const s = document.createElement('script');
+              s.id = 'gigapub-script';
+              s.src = `https://ad.gigapub.tech/script?id=${ad.appId}`;
+              s.async = true;
+              s.onload = () => {
+                setScriptLoaded((p) => ({ ...p, gigapub: typeof window.showGiga === 'function' }));
+                setScriptsInitialized((p) => ({ ...p, gigapub: true }));
+              };
+              s.onerror = () => setScriptsInitialized((p) => ({ ...p, gigapub: true }));
+              document.head.appendChild(s);
+            } else {
+              setScriptLoaded((p) => ({ ...p, gigapub: true }));
+              setScriptsInitialized((p) => ({ ...p, gigapub: true }));
+            }
+            break;
+          }
+          case 'onclicka': {
+            if (!document.getElementById('onclicka-script')) {
+              const s = document.createElement('script');
+              s.id = 'onclicka-script';
+              s.src = 'https://js.onclckvd.com/in-stream-ad-admanager/tma.js';
+              s.async = true;
+              s.onload = async () => {
+                try {
+                  if (window.initCdTma) {
+                    const show = await window.initCdTma({ id: ad.appId });
+                    window.showAd = show;
+                    setScriptLoaded((p) => ({ ...p, onclicka: typeof window.showAd === 'function' }));
+                  }
+                } catch (e) {
+                  console.error('Onclicka init failed', e);
+                } finally {
+                  setScriptsInitialized((p) => ({ ...p, onclicka: true }));
+                }
+              };
+              s.onerror = () => setScriptsInitialized((p) => ({ ...p, onclicka: true }));
+              document.head.appendChild(s);
+            } else {
+              setScriptLoaded((p) => ({ ...p, onclicka: true }));
+              setScriptsInitialized((p) => ({ ...p, onclicka: true }));
+            }
+            break;
+          }
+          case 'auruads': {
+            if (!document.getElementById('auruads-script')) {
+              const s = document.createElement('script');
+              s.id = 'auruads-script';
+              s.src = `https://auruads.com/cdn/ads.js?app_uid=${ad.appId}`;
+              s.async = true;
+              s.onload = () => {
+                setScriptLoaded((p) => ({ ...p, auruads: typeof window.showAuruads === 'function' }));
+                setScriptsInitialized((p) => ({ ...p, auruads: true }));
+              };
+              s.onerror = () => setScriptsInitialized((p) => ({ ...p, auruads: true }));
+              document.head.appendChild(s);
+            } else {
+              setScriptLoaded((p) => ({ ...p, auruads: true }));
+              setScriptsInitialized((p) => ({ ...p, auruads: true }));
+            }
+            break;
+          }
+          case 'libtl': {
+            if (!document.getElementById('libtl-script')) {
+              const s = document.createElement('script');
+              s.id = 'libtl-script';
+              s.src = '//libtl.com/sdk.js';
+              s.setAttribute('data-zone', ad.appId);
+              s.setAttribute('data-sdk', `show_${ad.appId}`);
+              s.async = true;
+              s.onload = () => {
+                const ok = typeof window[`show_${ad.appId}`] === 'function';
+                setScriptLoaded((p) => ({ ...p, libtl: ok }));
+                setScriptsInitialized((p) => ({ ...p, libtl: true }));
+              };
+              s.onerror = () => setScriptsInitialized((p) => ({ ...p, libtl: true }));
+              document.head.appendChild(s);
+            } else {
+              setScriptLoaded((p) => ({ ...p, libtl: true }));
+              setScriptsInitialized((p) => ({ ...p, libtl: true }));
+            }
+            break;
+          }
+          case 'adextra': {
+            // AdExtra is expected to be included in index.html and exposes window.p_adextra
+            setScriptLoaded((p) => ({ ...p, adextra: typeof window.p_adextra === 'function' || p.adextra }));
+            setScriptsInitialized((p) => ({ ...p, adextra: true }));
+            break;
+          }
+        }
+      });
+    };
+    initScripts();
+    return () => {
+      // cleanup dynamic provider scripts (keep index.html AdExtra)
+      ['adexora-script', 'gigapub-script', 'onclicka-script', 'auruads-script', 'libtl-script'].forEach((id) => {
+        const n = document.getElementById(id);
+        if (n) n.remove();
+      });
+    };
+  }, [ads, scriptsInitialized]);
 
   // ==== Earning + persistence ====
   const updateUserAdWatch = async (adId: number) => {
@@ -369,18 +522,18 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
     if (earned > 0) showMessage('success', `Ad completed! You earned ${walletConfig.currencySymbol} ${earned}`);
   };
 
-  // ==== Helpers ====
   const formatTime = (sec: number): string => (sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`);
 
-  // ==== AdExtra specific (HTML-like instant) ====
+  // ==== AdExtra (callback-based) ====
   const runAdExtra = async (adId: number, ad: Ad) => {
-    // Called directly from click handler to avoid fullscreen blockers (per guide):contentReference[oaicite:4]{index=4}
     if (typeof window.p_adextra !== 'function') {
       showMessage('info', 'AdExtra initializing… please try again in a moment');
+      setConcurrentLock(false);
+      setIsWatchingAd(null);
       return;
     }
-    // Fail-safe if callback never fires
     const timeoutMs = Math.max(15000, ad.waitTime * 1000 + 5000);
+
     const release = () => {
       setConcurrentLock(false);
       setIsWatchingAd(null);
@@ -395,6 +548,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
       showMessage('error', 'Ad failed or was skipped. Try again.');
       release();
     };
+
     const to = setTimeout(() => {
       console.warn('AdExtra timed out without callback');
       onError();
@@ -409,20 +563,28 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
       onError();
     };
 
-    // Fire!
     window.p_adextra(wrappedSuccess, wrappedError);
   };
 
-  // ==== Main showAd (keeps other providers as-is; AdExtra is instant) ====
+  // ==== Main showAd ====
   const showAd = async (adId: number) => {
     if (concurrentLock) {
       showMessage('info', 'Please complete the current ad first');
       return;
     }
     const ad = ads.find((a) => a.id === adId);
-    if (!ad) return;
+    if (!ad) {
+      showMessage('error', 'Ad not found');
+      return;
+    }
     if (!ad.enabled) {
       showMessage('error', 'This ad provider is temporarily unavailable');
+      return;
+    }
+
+    // AdExtra should not wait for dynamic scriptLoaded — it comes from index.html
+    if (ad.provider !== 'adextra' && !scriptLoaded[ad.provider]) {
+      showMessage('info', 'Ad provider is loading... Please wait a moment');
       return;
     }
 
@@ -446,22 +608,45 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
 
     try {
       if (ad.provider === 'adextra') {
-        // Instant like HTML
         await runAdExtra(adId, ad);
-        return;
+        return; // callbacks will release lock
       }
 
-      // Other providers (optional): keep your old logic here if you use them.
-      // Example fallback (simulate success after waitTime):
-      await new Promise((res) => setTimeout(res, ad.waitTime * 1000));
-      await handleAdCompletion(adId);
-      setAds((prev) => prev.map((a) => (a.id === adId ? { ...a, watched: a.watched + 1 } : a)));
-      setLastWatched((prev) => ({ ...prev, [ad.provider]: now }));
+      const minWaitTime = ad.waitTime;
+      const start = Date.now();
+      let adCompleted = false;
+
+      if (ad.provider === 'adexora' && window.showAdexora) {
+        await window.showAdexora(); adCompleted = true;
+      } else if (ad.provider === 'gigapub' && window.showGiga) {
+        await window.showGiga(); adCompleted = true;
+      } else if (ad.provider === 'onclicka' && window.showAd) {
+        await window.showAd(); adCompleted = true;
+      } else if (ad.provider === 'auruads' && window.showAuruads) {
+        await window.showAuruads(); adCompleted = true;
+      } else if (ad.provider === 'libtl') {
+        const fn = window[`show_${ad.appId}` as keyof Window] as (() => Promise<void>) | undefined;
+        if (fn) { await fn(); adCompleted = true; }
+        else { throw new Error('Libtl ad function not available'); }
+      } else {
+        throw new Error('Ad provider function not available');
+      }
+
+      if (adCompleted) {
+        const elapsed = (Date.now() - start) / 1000;
+        if (elapsed >= minWaitTime) {
+          await handleAdCompletion(adId);
+          setAds((prev) => prev.map((a) => (a.id === adId ? { ...a, watched: a.watched + 1 } : a)));
+          setLastWatched((prev) => ({ ...prev, [ad.provider]: now }));
+        } else {
+          throw new Error(`Please watch the ad completely (minimum ${minWaitTime} seconds)`);
+        }
+      }
     } catch (e) {
       console.error('Ad error:', e);
       showMessage('error', 'Ad was not completed.');
     } finally {
-      if (ad.provider !== 'adextra') {
+      if (ad?.provider !== 'adextra') {
         setConcurrentLock(false);
         setIsWatchingAd(null);
       }
@@ -472,6 +657,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
     if (!ad.enabled) return true;
     if (ad.dailyLimit > 0 && ad.watched >= ad.dailyLimit) return true;
     if (cooldowns[ad.provider]) return true;
+    if (ad.provider !== 'adextra' && !scriptLoaded[ad.provider]) return true;
     if (concurrentLock && isWatchingAd !== ad.id) return true;
     return false;
   };
@@ -480,6 +666,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
     if (!ad.enabled) return 'Temporarily Disabled';
     if (ad.dailyLimit > 0 && ad.watched >= ad.dailyLimit) return 'Daily Limit Reached';
     if (cooldowns[ad.provider]) return `Wait ${formatTime(cooldowns[ad.provider])}`;
+    if (ad.provider !== 'adextra' && !scriptLoaded[ad.provider]) return 'Loading...';
     if (concurrentLock && isWatchingAd !== ad.id) return 'Another Ad in Progress';
     if (isWatchingAd === ad.id) return 'Watching Ad...';
     return 'Watch Now';
@@ -502,7 +689,6 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
         </div>
       )}
 
-      {/* Reset Timer */}
       <div className="col-span-2 bg-[#0a1a2b] rounded-3xl p-3 border border-[#014983]/40 shadow-lg mb-2">
         <div className="flex justify-between items-center text-sm">
           <span className="text-blue-300">Daily reset in:</span>
