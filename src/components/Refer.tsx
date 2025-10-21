@@ -53,6 +53,11 @@ interface AppConfig {
   referralCommissionRate?: number;
 }
 
+interface WalletConfig {
+  currency: string;
+  currencySymbol: string;
+}
+
 // In ReferPage component
 interface ReferPageProps {
   userId: string;
@@ -67,6 +72,11 @@ const ReferPage: React.FC<ReferPageProps> = ({ userId }) => {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [commissionRate, setCommissionRate] = useState<number>(10); // Default to 10%
+  const [walletConfig, setWalletConfig] = useState<WalletConfig>({ 
+    currency: 'USD', 
+    currencySymbol: '$' 
+  });
+  
   const referralsPerPage = 5;
   
   // Use refs to track commission state without causing re-renders
@@ -98,6 +108,21 @@ const ReferPage: React.FC<ReferPageProps> = ({ userId }) => {
       if (snapshot.exists()) {
         const config = snapshot.val() as AppConfig;
         setCommissionRate(config.referralCommissionRate || 10);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch wallet config to get currency settings
+  useEffect(() => {
+    const walletConfigRef = ref(database, 'walletConfig');
+    const unsubscribe = onValue(walletConfigRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const config = snapshot.val() as WalletConfig;
+        setWalletConfig({
+          currency: config.currency || 'USD',
+          currencySymbol: config.currencySymbol || '$'
+        });
       }
     });
     return () => unsubscribe();
@@ -150,6 +175,11 @@ const ReferPage: React.FC<ReferPageProps> = ({ userId }) => {
     return total + (referral.commissionEarned || referral.total_balance * (commissionRate / 100));
   }, 0);
 
+  // Format currency display
+  const formatCurrency = (amount: number): string => {
+    return `${walletConfig.currencySymbol}${amount.toFixed(2)}`;
+  };
+
   const botUsername = "freebox2_bot";
   const referralLink = `https://t.me/${botUsername}?start=${userId}`;
   const shareText = encodeURIComponent(`🚀 Join me and earn crypto rewards! Use my referral link: ${referralLink}`);
@@ -188,7 +218,7 @@ const ReferPage: React.FC<ReferPageProps> = ({ userId }) => {
 
           <div className="bg-black/30 rounded-3xl p-5 shadow-lg flex flex-col items-center justify-center hover:scale-105 transition-transform">
             <p className="text-3xl font-extrabold text-white">
-              ${totalCommissionFromReferrals.toFixed(2)}
+              {formatCurrency(totalCommissionFromReferrals)}
             </p>
             <p className="text-[13px] text-white/80 mt-1">Total Commission</p>
           </div>
@@ -245,11 +275,11 @@ const ReferPage: React.FC<ReferPageProps> = ({ userId }) => {
                     <div>
                       <p className="text-sm font-medium text-white">{referral.first_name}</p>
                       <p className="text-xs text-blue-300">Joined: {new Date(referral.joinedAt).toLocaleDateString()}</p>
-                      <p className="text-xs text-green-300">Balance: ${referral.total_balance.toFixed(2)}</p>
+                      <p className="text-xs text-green-300">Balance: {formatCurrency(referral.total_balance)}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-green-400 text-sm font-medium">+${getCommission(referral).toFixed(2)}</div>
+                    <div className="text-green-400 text-sm font-medium">+{formatCurrency(getCommission(referral))}</div>
                     <div className="text-xs text-blue-300">Your {commissionRate}%</div>
                   </div>
                 </div>
