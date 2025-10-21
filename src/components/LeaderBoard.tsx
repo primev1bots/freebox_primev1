@@ -16,6 +16,11 @@ interface LeaderboardUser {
   rank: number;
 }
 
+interface WalletConfig {
+  currency: string;
+  currencySymbol: string;
+}
+
 interface LeaderBoardProps {
   onBack: () => void;
   currentUserId?: number;
@@ -25,10 +30,32 @@ const LeaderBoard: React.FC<LeaderBoardProps> = ({ onBack, currentUserId }) => {
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [, setError] = useState<string | null>(null);
+  const [walletConfig, setWalletConfig] = useState<WalletConfig>({ 
+    currency: 'USD', 
+    currencySymbol: '$' 
+  });
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const usersPerPage = 4;
+
+  // Fetch wallet config
+  useEffect(() => {
+    const database = getDatabase();
+    const walletConfigRef = ref(database, 'walletConfig');
+    
+    const unsubscribeWalletConfig = onValue(walletConfigRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const config = snapshot.val() as WalletConfig;
+        setWalletConfig({
+          currency: config.currency || 'USD',
+          currencySymbol: config.currencySymbol || '$'
+        });
+      }
+    });
+
+    return () => unsubscribeWalletConfig();
+  }, []);
 
   const fetchLeaderboardData = async () => {
     setIsLoading(true);
@@ -123,7 +150,12 @@ const LeaderBoard: React.FC<LeaderBoardProps> = ({ onBack, currentUserId }) => {
     return () => off(usersRef);
   }, []);
 
-  const getDisplayValue = (user: LeaderboardUser) => `$${(user.totalEarned || 0).toFixed(2)}`;
+  // Format currency display
+  const formatCurrency = (amount: number): string => {
+    return `${walletConfig.currencySymbol}${amount.toFixed(2)}`;
+  };
+
+  const getDisplayValue = (user: LeaderboardUser) => formatCurrency(user.totalEarned || 0);
 
   const getRankBadge = (rank: number) => {
     switch (rank) {
@@ -194,6 +226,7 @@ const LeaderBoard: React.FC<LeaderBoardProps> = ({ onBack, currentUserId }) => {
       <div className="text-center mb-6">
         <h1 className="text-2xl font-bold text-white mb-2">Earnings Leaderboard</h1>
         <p className="text-blue-300">Top earners based on total earnings</p>
+        <p className="text-sm text-blue-400 mt-1">Currency: {walletConfig.currency}</p>
       </div>
 
       {/* Current User Rank */}
@@ -211,7 +244,7 @@ const LeaderBoard: React.FC<LeaderBoardProps> = ({ onBack, currentUserId }) => {
               <div>
                 <h3 className="text-white font-bold">Your Rank</h3>
                 <p className="text-white/80 text-sm">
-                  {getDisplayValue(currentUserRank)} • {currentUserRank.referredCount} referrals
+                  {getDisplayValue(currentUserRank)} â€¢ {currentUserRank.referredCount} referrals
                 </p>
               </div>
             </div>
