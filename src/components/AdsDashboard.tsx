@@ -269,7 +269,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
           };
         })
       );
-      // reset script init flags for 1–5 after config changes
+      // reset script init flags for 1â€“5 after config changes
       setScriptsInitialized((prev) => ({
         ...prev,
         adexora: false,
@@ -327,7 +327,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
     return () => clearInterval(iv);
   }, [lastWatched, ads]);
 
-  // ==== Provider scripts (dynamic) — for providers 1–5 only ====
+  // ==== Provider scripts (dynamic) â€” for providers 1â€“5 only ====
   React.useEffect(() => {
     const initScripts = () => {
       ads.forEach((ad) => {
@@ -527,7 +527,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
   // ==== AdExtra (callback-based) ====
   const runAdExtra = async (adId: number, ad: Ad) => {
     if (typeof window.p_adextra !== 'function') {
-      showMessage('info', 'AdExtra initializing… please try again in a moment');
+      showMessage('info', 'AdExtra initializingâ€¦ please try again in a moment');
       setConcurrentLock(false);
       setIsWatchingAd(null);
       return;
@@ -582,7 +582,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
       return;
     }
 
-    // AdExtra should not wait for dynamic scriptLoaded — it comes from index.html
+    // AdExtra should not wait for dynamic scriptLoaded â€” it comes from index.html
     if (ad.provider !== 'adextra' && !scriptLoaded[ad.provider]) {
       showMessage('info', 'Ad provider is loading... Please wait a moment');
       return;
@@ -604,7 +604,7 @@ const AdsDashboard: React.FC<AdsDashboardProps> = ({
 
     setConcurrentLock(true);
     setIsWatchingAd(adId);
-    showMessage('info', 'Preparing ad…');
+    showMessage('info', 'Preparing adâ€¦');
 
     try {
       if (ad.provider === 'adextra') {
